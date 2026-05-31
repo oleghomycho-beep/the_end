@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DDA Simulation Interface</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml" />
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f5f7fb; color: #202124; }
+        .container { max-width: 960px; margin: 32px auto; padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 12px 28px rgba(0,0,0,0.08); }
+        h1, h2, h3 { color: #1a237e; }
+        label { display: block; margin-top: 16px; font-weight: 600; }
+        input, select { width: 100%; padding: 10px 12px; border: 1px solid #cfd8dc; border-radius: 8px; margin-top: 6px; box-sizing: border-box; }
+        .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+        .button { margin-top: 16px; background: #1a237e; color: white; border: 0; padding: 14px 20px; border-radius: 10px; font-size: 16px; cursor: pointer; }
+        .button:hover { background: #0f164f; }
+        .button.secondary { background: #3949ab; margin-right: 10px; }
+        .plan { margin-top: 16px; padding: 18px; background: #eef1ff; border-radius: 10px; }
+        fieldset { border: 2px solid #c5cae9; border-radius: 12px; padding: 20px; margin: 0 0 24px; }
+        fieldset.section-3d { border-color: #3949ab; background: #f8f9ff; }
+        fieldset.section-sim { border-color: #90a4ae; background: #fafbfc; }
+        legend { font-weight: 700; color: #1a237e; padding: 0 8px; font-size: 1.05rem; }
+        .section-desc { font-size: 13px; color: #555; margin: 0 0 12px; }
+        #preview-canvas { width: 100%; height: 420px; border-radius: 10px; background: #0d1117; display: block; }
+        .view-modes { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 12px 0; font-size: 14px; }
+        .view-modes label { margin-top: 0; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+        .legend-3d { font-size: 12px; color: #555; margin-top: 8px; line-height: 1.6; }
+        .legend-3d span { display: inline-block; margin-right: 12px; }
+        #preview-text { margin: 12px 0 0; font-size: 14px; color: #444; }
+        .preview-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 13px; }
+        .preview-meta span { background: #fff; padding: 6px 10px; border-radius: 6px; border: 1px solid #dfe3ea; }
+        .preview-hint { font-size: 12px; color: #666; margin-top: 6px; }
+        .field-hint { font-size: 12px; color: #555; margin-top: 4px; font-weight: 400; }
+        .warn-box { margin-top: 10px; padding: 10px 12px; background: #fff3e0; border-radius: 8px; font-size: 13px; color: #e65100; }
+        .warn-box:empty { display: none; }
+        .viz-options label { display: inline-block; margin-right: 18px; margin-top: 8px; font-weight: 500; }
+        .badge-3d { display: inline-block; font-size: 11px; background: #3949ab; color: #fff; padding: 2px 8px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+    </style>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Моделювання оптичного відгуку наночастинок</h1>
+        <p>Графічний веб-інтерфейс для моделювання оптичного відгуку металічних наночастинок методом дискретних диполів (DDA).
+            <a href="{{ url_for('help_3d') }}" style="color:#3949ab;font-weight:600;">Довідка по 3D →</a></p>
+
+        <form id="sim-form" action="/simulate" method="post">
+            <fieldset class="section-3d">
+                <legend>Геометрія та 3D-вигляд</legend>
+                <p class="section-desc">Ці параметри змінюють форму, розмір, орієнтацію, гратку диполів і візуалізацію в 3D.</p>
+
+                <div class="plan" style="margin-bottom:16px;">
+                    <h3>3D Preview — модель DDA</h3>
+                    <canvas id="preview-canvas"></canvas>
+                    <p id="preview-text">Оновлення 3D-моделі…</p>
+                    <div class="preview-meta" id="preview-meta"></div>
+
+                    <p><strong>Режим перегляду:</strong></p>
+                    <div class="view-modes">
+                        <label><input type="radio" name="view_mode" value="full" checked /> Повний DDA</label>
+                        <label><input type="radio" name="view_mode" value="particle" /> Частинка</label>
+                        <label><input type="radio" name="view_mode" value="dipoles" /> Диполі (voxel)</label>
+                        <label><input type="radio" name="view_mode" value="moments" /> Моменти p⃗</label>
+                        <label><input type="radio" name="view_mode" value="field" /> Near-field</label>
+                    </div>
+
+                    <div class="grid" style="margin-top:12px;">
+                        <div>
+                            <label for="preview_wavelength_nm">λ для 3D, нм <span class="badge-3d">3D</span></label>
+                            <input id="preview_wavelength_nm" name="preview_wavelength_nm" type="number" step="1" min="100" max="2000" class="preview-visual"
+                                value="{{ (settings.preview_wavelength_nm or settings.wavelength_min_nm) | int }}" />
+                            <span class="field-hint">Саме це λ йде в ε(λ), α, p⃗ (не середина спектра)</span>
+                        </div>
+                        <div>
+                            <label for="light_theta_deg">Напрям світла θ, ° <span class="badge-3d">k⃗</span></label>
+                            <input id="light_theta_deg" name="light_theta_deg" type="number" step="1" min="0" max="180" class="preview-visual"
+                                value="{{ settings.light_theta_deg }}" />
+                            <span class="field-hint">0° = +Z, 180° = −Z (джерело з іншого боку)</span>
+                        </div>
+                        <div>
+                            <label for="light_phi_deg">Азимут світла φ, ° <span class="badge-3d">k⃗</span></label>
+                            <input id="light_phi_deg" name="light_phi_deg" type="number" step="1" min="0" max="360" class="preview-visual"
+                                value="{{ settings.light_phi_deg }}" />
+                        </div>
+                    </div>
+
+                    <div class="viz-options" style="margin:10px 0;">
+                        <label><input type="checkbox" name="show_dipoles" id="show_dipoles" value="on" class="preview-visual" {% if settings.show_dipoles %}checked{% endif %} /> Гратка диполів</label>
+                        <label><input type="checkbox" name="show_electric_field" id="show_electric_field" value="on" class="preview-visual" checked /> Падаюча хвиля + k⃗</label>
+                        <label><input type="checkbox" name="show_near_field" id="show_near_field" value="on" class="preview-visual" {% if settings.show_near_field %}checked{% endif %} /> Near-field |E|² (точки)</label>
+                        <label><input type="checkbox" id="animate-dipoles" /> Анімація коливань p⃗</label>
+                    </div>
+
+                    <div class="legend-3d">
+                        <span>🔵 частинка (Au/Ag/Al)</span>
+                        <span>🟨 диполі (кубики)</span>
+                        <span>🔴 p⃗ (реакція)</span>
+                        <span>🟢 k⃗, хвиля</span>
+                        <span>🟡 E₀ поляризація</span>
+                        <span>🌈 near-field: |E|² (синій→червоний, лише з чекбоксом)</span>
+                        <span>🔴🟢🔵 осі XYZ</span>
+                    </div>
+                    <div class="warn-box" id="validation-warnings"></div>
+                    <button type="button" class="button secondary" id="btn-refresh-preview">Оновити 3D</button>
+                </div>
+
+                <div class="grid">
+                    <div>
+                        <label for="material">Матеріал <span class="badge-3d">3D</span></label>
+                        <select id="material" name="material" class="preview-geom">
+                            <option value="Au" {% if particle.material == 'Au' %}selected{% endif %}>Au (золото)</option>
+                            <option value="Ag" {% if particle.material == 'Ag' %}selected{% endif %}>Ag (срібло)</option>
+                            <option value="Al" {% if particle.material == 'Al' %}selected{% endif %}>Al (алюміній)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="shape">Форма <span class="badge-3d">3D</span></label>
+                        <select id="shape" name="shape" class="preview-geom">
+                            <option value="sphere" {% if particle.shape == 'sphere' %}selected{% endif %}>Сфера</option>
+                            <option value="ellipsoid" {% if particle.shape == 'ellipsoid' %}selected{% endif %}>Еліпсоїд</option>
+                            <option value="cube" {% if particle.shape == 'cube' %}selected{% endif %}>Куб</option>
+                            <option value="rod" {% if particle.shape == 'rod' %}selected{% endif %}>Стрижень</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="radius_nm">Радіус / розмір, нм <span class="badge-3d">3D</span></label>
+                        <input id="radius_nm" name="radius_nm" type="number" step="0.1" min="1" class="preview-geom" value="{{ particle.radius_nm }}" />
+                    </div>
+                    <div>
+                        <label for="aspect_ratio">Співвідношення сторін <span class="badge-3d">3D</span></label>
+                        <input id="aspect_ratio" name="aspect_ratio" type="number" step="0.1" min="0.1" class="preview-geom" value="{{ particle.aspect_ratio }}" />
+                    </div>
+                    <div>
+                        <label for="dipole_spacing_nm">Крок диполя, нм <span class="badge-3d">3D</span></label>
+                    <input id="dipole_spacing_nm" name="dipole_spacing_nm" type="number" step="0.1" min="0.5" class="preview-geom" value="{{ particle.dipole_spacing_nm }}" />
+                    <span class="field-hint" id="hint-spacing">d ≤ λ<sub>min</sub>/10, d ≥ 0.5 нм</span>
+                </div>
+                <div>
+                    <label for="num_dipoles">Цільова кількість диполів <span class="badge-3d">3D</span></label>
+                    <input id="num_dipoles" name="num_dipoles" type="number" step="1" min="1" class="preview-geom" value="{{ particle.num_dipoles }}" />
+                    <span class="field-hint" id="hint-dipoles">N ≤ N<sub>lattice</sub> (вузлів у формі при кроці d)</span>
+                </div>
+                    <div>
+                        <label for="orientation_axis">Вісь обертання <span class="badge-3d">3D</span></label>
+                        <select id="orientation_axis" name="orientation_axis" class="preview-geom">
+                            <option value="X" {% if particle.orientation_axis == 'X' %}selected{% endif %}>X</option>
+                            <option value="Y" {% if particle.orientation_axis == 'Y' %}selected{% endif %}>Y</option>
+                            <option value="Z" {% if particle.orientation_axis == 'Z' %}selected{% endif %}>Z</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="theta_deg">Кут θ, ° <span class="badge-3d">3D</span></label>
+                        <input id="theta_deg" name="theta_deg" type="number" step="0.1" class="preview-geom" value="{{ particle.theta_deg }}" />
+                    </div>
+                    <div>
+                        <label for="phi_deg">Кут φ, ° <span class="badge-3d">3D</span></label>
+                        <input id="phi_deg" name="phi_deg" type="number" step="0.1" class="preview-geom" value="{{ particle.phi_deg }}" />
+                    </div>
+                    <div>
+                        <label for="material_model">Матеріальна модель <span class="badge-3d">ε в 3D</span></label>
+                        <select id="material_model" name="material_model" class="preview-geom">
+                            <option value="Drude model" {% if particle.material_model == 'Drude model' %}selected{% endif %}>Drude model</option>
+                            <option value="Drude-Lorentz" {% if particle.material_model == 'Drude-Lorentz' %}selected{% endif %}>Drude-Lorentz</option>
+                            <option value="Experimental data" {% if particle.material_model == 'Experimental data' %}selected{% endif %}>Experimental data</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="re_epsilon">Re(ε) — експеримент <span class="badge-3d">3D</span></label>
+                        <input id="re_epsilon" name="re_epsilon" type="number" step="0.01" class="preview-geom" value="{{ particle.re_epsilon }}" />
+                    </div>
+                    <div>
+                        <label for="im_epsilon">Im(ε) — експеримент <span class="badge-3d">3D</span></label>
+                        <input id="im_epsilon" name="im_epsilon" type="number" step="0.01" class="preview-geom" value="{{ particle.im_epsilon }}" />
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="section-sim">
+                <legend>Параметри оптичної симуляції</legend>
+                <p class="section-desc">Довжина хвилі, середовище, поляризація та розв’язувач — впливають на спектр на сторінці результатів. Середовище й поляризація також показані в 3D.</p>
+
+                <div class="grid">
+                    <div>
+                        <label for="wavelength_min_nm">Мін. λ спектра, нм</label>
+                        <input id="wavelength_min_nm" name="wavelength_min_nm" type="number" step="1" class="preview-visual" value="{{ settings.wavelength_min_nm }}" />
+                        <span class="field-hint">Зміна → оновлює «λ для 3D» (якщо не редагували його вручну)</span>
+                    </div>
+                    <div>
+                        <label for="wavelength_max_nm">Макс. λ, нм</label>
+                        <input id="wavelength_max_nm" name="wavelength_max_nm" type="number" step="1" class="preview-visual" value="{{ settings.wavelength_max_nm }}" />
+                    </div>
+                    <div>
+                        <label for="wavelength_step_nm">Крок λ, нм</label>
+                        <input id="wavelength_step_nm" name="wavelength_step_nm" type="number" step="0.1" value="{{ settings.wavelength_step_nm }}" />
+                    </div>
+                    <div>
+                        <label for="environment">Середовище <span class="badge-3d">3D</span></label>
+                        <select id="environment" name="environment" class="preview-visual">
+                            <option value="Air" {% if settings.environment == 'Air' %}selected{% endif %}>Air</option>
+                            <option value="Water" {% if settings.environment == 'Water' %}selected{% endif %}>Water</option>
+                            <option value="Glass" {% if settings.environment == 'Glass' %}selected{% endif %}>Glass</option>
+                            <option value="Custom" {% if settings.environment == 'Custom' %}selected{% endif %}>Custom</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="ambient_index">n середовища <span class="badge-3d">3D</span></label>
+                        <input id="ambient_index" name="ambient_index" type="number" step="0.01" min="1" class="preview-visual" value="{{ settings.ambient_index }}" />
+                    </div>
+                    <div>
+                        <label for="polarization">Поляризація E₀ <span class="badge-3d">3D</span></label>
+                        <select id="polarization" name="polarization" class="preview-visual">
+                            <option value="X" {% if settings.polarization == 'X' %}selected{% endif %}>X</option>
+                            <option value="Y" {% if settings.polarization == 'Y' %}selected{% endif %}>Y</option>
+                            <option value="Z" {% if settings.polarization == 'Z' %}selected{% endif %}>Z</option>
+                            <option value="Circular" {% if settings.polarization == 'Circular' %}selected{% endif %}>Circular</option>
+                            <option value="Random" {% if settings.polarization == 'Random' %}selected{% endif %}>Random</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="temperature">Температура T, K <span class="badge-3d">ε</span></label>
+                        <input id="temperature" name="temperature" type="number" step="1" class="preview-visual preview-geom" value="{{ settings.temperature }}" />
+                    </div>
+                    <div>
+                        <label for="spectrum_type">Тип спектра</label>
+                        <select id="spectrum_type" name="spectrum_type">
+                            <option value="Absorption" {% if settings.spectrum_type == 'Absorption' %}selected{% endif %}>Absorption</option>
+                            <option value="Scattering" {% if settings.spectrum_type == 'Scattering' %}selected{% endif %}>Scattering</option>
+                            <option value="Extinction" {% if settings.spectrum_type == 'Extinction' %}selected{% endif %}>Extinction</option>
+                            <option value="All" {% if settings.spectrum_type == 'All' %}selected{% endif %}>All</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="intensity">Інтенсивність I</label>
+                        <input id="intensity" name="intensity" type="number" step="0.1" value="{{ settings.intensity }}" />
+                    </div>
+                    <div>
+                        <label for="field_amplitude">E₀</label>
+                        <input id="field_amplitude" name="field_amplitude" type="number" step="0.1" value="{{ settings.field_amplitude }}" />
+                    </div>
+                    <div>
+                        <label for="lattice_type">Тип гратки диполів</label>
+                        <select id="lattice_type" name="lattice_type">
+                            <option value="Cubic lattice" {% if settings.lattice_type == 'Cubic lattice' %}selected{% endif %}>Cubic lattice</option>
+                            <option value="Rectangular lattice" {% if settings.lattice_type == 'Rectangular lattice' %}selected{% endif %}>Rectangular lattice</option>
+                            <option value="Adaptive grid" {% if settings.lattice_type == 'Adaptive grid' %}selected{% endif %}>Adaptive grid</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="max_iterations">Max iterations</label>
+                        <input id="max_iterations" name="max_iterations" type="number" step="1" value="{{ settings.max_iterations }}" />
+                    </div>
+                    <div>
+                        <label for="error_tolerance">Error tolerance</label>
+                        <input id="error_tolerance" name="error_tolerance" type="number" step="1e-6" value="{{ settings.error_tolerance }}" />
+                    </div>
+                    <div>
+                        <label for="solver">Метод розв'язку</label>
+                        <select id="solver" name="solver">
+                            <option value="Conjugate Gradient" {% if settings.solver == 'Conjugate Gradient' %}selected{% endif %}>Conjugate Gradient</option>
+                            <option value="BiCGSTAB" {% if settings.solver == 'BiCGSTAB' %}selected{% endif %}>BiCGSTAB</option>
+                            <option value="FFT accelerated" {% if settings.solver == 'FFT accelerated' %}selected{% endif %}>FFT accelerated</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="graph_type">Тип графіка</label>
+                        <select id="graph_type" name="graph_type">
+                            <option value="λ vs Absorption" {% if settings.graph_type == 'λ vs Absorption' %}selected{% endif %}>λ vs Absorption</option>
+                            <option value="λ vs Scattering" {% if settings.graph_type == 'λ vs Scattering' %}selected{% endif %}>λ vs Scattering</option>
+                            <option value="λ vs Extinction" {% if settings.graph_type == 'λ vs Extinction' %}selected{% endif %}>λ vs Extinction</option>
+                        </select>
+                    </div>
+                </div>
+            </fieldset>
+
+            <button type="submit" class="button">Запустити симуляцію</button>
+        </form>
+    </div>
+
+    <script type="module">
+        import { initDdaPreview3d } from '{{ url_for("static", filename="js/dda_preview3d.js") }}';
+        window.addEventListener('load', () => initDdaPreview3d());
+    </script>
+</body>
+</html>

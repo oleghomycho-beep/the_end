@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Результати симуляції DDA</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f5f7fb; color: #202124; }
+        .container { max-width: 1000px; margin: 32px auto; padding: 24px; background: #ffffff; border-radius: 12px; box-shadow: 0 12px 28px rgba(0,0,0,0.08); }
+        h1, h2 { color: #1a237e; }
+        table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 14px; }
+        th, td { padding: 8px 10px; border: 1px solid #dfe3ea; text-align: center; }
+        th { background: #eef1ff; font-size: 13px; line-height: 1.35; }
+        th .th-unit { font-weight: 700; }
+        th .th-desc { font-weight: 400; color: #444; font-size: 12px; }
+        .summary { margin-top: 14px; padding: 16px; background: #eef1ff; border-radius: 10px; }
+        .button, .link-button { display: inline-block; margin-top: 20px; margin-right: 10px; background: #1a237e; color: white; border: none; padding: 12px 20px; border-radius: 10px; text-decoration: none; font-size: 15px; }
+        .button:hover, .link-button:hover { background: #0f164f; }
+        .chart-box { margin-top: 24px; padding: 16px; background: #fafbff; border-radius: 10px; }
+        .chart-box canvas { max-height: 380px; }
+        .peak { font-weight: 600; color: #1a237e; }
+        .table-wrap { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Результати симуляції DDA</h1>
+        <div class="summary">
+            <p><strong>Наночастинка:</strong> {{ particle.summary() }}</p>
+            <p><strong>Симуляція:</strong> {{ settings.summary() }}</p>
+            <p><strong>Диполів у розрахунку:</strong> {{ result.dipoles_used }} (ітерацій розв'язувача: {{ result.solver_iterations }})</p>
+            <p><strong>Кількість точок спектра:</strong> {{ result.wavelengths|length }}</p>
+            <p><strong>Середовище:</strong> {{ settings.environment }}, n = {{ settings.ambient_index }}</p>
+            <p><strong>Гратка:</strong> {{ settings.lattice_type }}, {{ settings.solver }}</p>
+        </div>
+        <div class="summary">
+            <p><strong>Фізична модель:</strong> метод дискретних диполів — частинка розбита на N диполів з поляризовністю α(ε, k); розв'язується система лінійних рівнянь для дипольних моментів p<sub>i</sub>.</p>
+            <p>f = c/λ, k = 2π/λ, C<sub>ext</sub> = C<sub>abs</sub> + C<sub>sca</sub>, Q = C / C<sub>geo</sub>.</p>
+            {% if result.extinction %}
+            <p class="peak">Максимум Q<sub>ext</sub> ≈ {{ '%.4f' % peak_q_ext }} при λ ≈ {{ '%.1f' % peak_wavelength_nm }} нм</p>
+            {% endif %}
+        </div>
+
+        <a class="link-button" href="{{ back_url }}">Повернутись до форми</a>
+        <a class="link-button" href="{{ url_for('help_3d') }}" style="background:#3949ab;">Довідка по 3D</a>
+        <a class="link-button" href="{{ download_url }}">Завантажити CSV</a>
+
+        <div class="chart-box">
+            <h2>Спектр ефективних перерізів Q(λ)</h2>
+            <canvas id="spectrumChart"></canvas>
+        </div>
+
+        <h2>Таблиця результатів</h2>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th><span class="th-unit">λ, нм</span> <span class="th-desc">(довжина хвилі вакууму)</span></th>
+                        <th><span class="th-unit">f, ТГц</span> <span class="th-desc">(частота, f = c/λ)</span></th>
+                        <th><span class="th-unit">k, 1/μm</span> <span class="th-desc">(хвильове число, k = 2π/λ)</span></th>
+                        {% if settings.spectrum_type == 'All' %}
+                            <th><span class="th-unit">Q<sub>ext</sub></span> <span class="th-desc">(ефективний переріз екстинкції)</span></th>
+                            <th><span class="th-unit">Q<sub>sca</sub></span> <span class="th-desc">(ефективний переріз розсіяння)</span></th>
+                            <th><span class="th-unit">Q<sub>abs</sub></span> <span class="th-desc">(ефективний переріз поглинання)</span></th>
+                            <th><span class="th-unit">C<sub>ext</sub>, нм²</span> <span class="th-desc">(переріз екстинкції, C<sub>ext</sub> = Q<sub>ext</sub>·πR²)</span></th>
+                        {% elif settings.spectrum_type == 'Absorption' %}
+                            <th><span class="th-unit">Q<sub>abs</sub></span> <span class="th-desc">(ефективний переріз поглинання)</span></th>
+                        {% elif settings.spectrum_type == 'Scattering' %}
+                            <th><span class="th-unit">Q<sub>sca</sub></span> <span class="th-desc">(ефективний переріз розсіяння)</span></th>
+                        {% else %}
+                            <th><span class="th-unit">Q<sub>ext</sub></span> <span class="th-desc">(ефективний переріз екстинкції)</span></th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for wl, freq, k, q_ext, q_sca, q_abs, c_ext, c_sca, c_abs in rows %}
+                    <tr>
+                        <td>{{ '%.1f' % wl }}</td>
+                        <td>{{ '%.2f' % (freq / 1e12) }}</td>
+                        <td>{{ '%.2f' % (k / 1e6) }}</td>
+                        {% if settings.spectrum_type == 'All' %}
+                            <td>{{ '%.4f' % q_ext }}</td>
+                            <td>{{ '%.4f' % q_sca }}</td>
+                            <td>{{ '%.4f' % q_abs }}</td>
+                            <td>{{ '%.2f' % (c_ext * 1e18) }}</td>
+                        {% elif settings.spectrum_type == 'Absorption' %}
+                            <td>{{ '%.4f' % q_abs }}</td>
+                        {% elif settings.spectrum_type == 'Scattering' %}
+                            <td>{{ '%.4f' % q_sca }}</td>
+                        {% else %}
+                            <td>{{ '%.4f' % q_ext }}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script>
+        const labels = {{ chart_labels|safe }};
+        const extData = {{ chart_ext|safe }};
+        const scaData = {{ chart_sca|safe }};
+        const absData = {{ chart_abs|safe }};
+        const spectrumType = {{ settings.spectrum_type|tojson }};
+        const graphType = {{ settings.graph_type|tojson }};
+
+        const datasets = [];
+        if (spectrumType === 'All' || spectrumType === 'Extinction' || graphType.indexOf('Extinction') >= 0) {
+            datasets.push({ label: 'Q_ext', data: extData, borderColor: '#1a237e', backgroundColor: 'rgba(26,35,126,0.1)', tension: 0.25 });
+        }
+        if (spectrumType === 'All' || spectrumType === 'Scattering' || graphType.indexOf('Scattering') >= 0) {
+            datasets.push({ label: 'Q_sca', data: scaData, borderColor: '#3949ab', backgroundColor: 'rgba(57,73,171,0.08)', tension: 0.25 });
+        }
+        if (spectrumType === 'All' || spectrumType === 'Absorption' || graphType.indexOf('Absorption') >= 0) {
+            datasets.push({ label: 'Q_abs', data: absData, borderColor: '#c62828', backgroundColor: 'rgba(198,40,40,0.08)', tension: 0.25 });
+        }
+        if (datasets.length === 0) {
+            datasets.push({ label: 'Q_ext', data: extData, borderColor: '#1a237e', tension: 0.25 });
+        }
+
+        new Chart(document.getElementById('spectrumChart'), {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: true, text: 'Оптичний відгук наночастинки (DDA)' }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'λ, нм' } },
+                    y: { title: { display: true, text: 'Q (ефективний переріз)' }, beginAtZero: true }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

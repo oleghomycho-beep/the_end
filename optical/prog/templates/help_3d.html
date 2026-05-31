@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Довідка — 3D Preview DDA</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml" />
+    <style>
+        :root { --primary: #1a237e; --accent: #3949ab; --bg: #f5f7fb; --card: #fff; --border: #dfe3ea; }
+        * { box-sizing: border-box; }
+        body { font-family: "Segoe UI", Arial, sans-serif; margin: 0; background: var(--bg); color: #202124; line-height: 1.55; }
+        .wrap { max-width: 920px; margin: 0 auto; padding: 28px 20px 48px; }
+        .nav { margin-bottom: 20px; }
+        .nav a { color: var(--accent); text-decoration: none; font-weight: 600; margin-right: 16px; }
+        .nav a:hover { text-decoration: underline; }
+        header { background: var(--card); border-radius: 12px; padding: 24px 28px; box-shadow: 0 8px 24px rgba(0,0,0,0.06); margin-bottom: 24px; }
+        h1 { color: var(--primary); margin: 0 0 8px; font-size: 1.75rem; }
+        .subtitle { color: #555; margin: 0; font-size: 1rem; }
+        section { background: var(--card); border-radius: 12px; padding: 22px 26px; margin-bottom: 20px; box-shadow: 0 4px 16px rgba(0,0,0,0.05); }
+        h2 { color: var(--primary); font-size: 1.25rem; margin: 0 0 14px; padding-bottom: 8px; border-bottom: 2px solid #e8eaf6; }
+        h3 { color: var(--accent); font-size: 1.05rem; margin: 20px 0 10px; }
+        p { margin: 0 0 12px; }
+        table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 14px; }
+        th, td { border: 1px solid var(--border); padding: 10px 12px; text-align: left; vertical-align: top; }
+        th { background: #eef1ff; color: var(--primary); font-weight: 600; }
+        tr:nth-child(even) td { background: #fafbff; }
+        .color-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 6px; border: 1px solid rgba(0,0,0,0.15); }
+        .formula { background: #f0f4ff; padding: 12px 16px; border-radius: 8px; font-family: Consolas, monospace; font-size: 13px; margin: 12px 0; overflow-x: auto; }
+        .note { background: #fff8e1; border-left: 4px solid #ffc107; padding: 12px 14px; margin: 14px 0; font-size: 14px; }
+        .warn { background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px 14px; margin: 14px 0; font-size: 14px; }
+        ul { margin: 8px 0 12px; padding-left: 22px; }
+        li { margin-bottom: 6px; }
+        code { background: #eee; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+        .toc ol { margin: 0; padding-left: 20px; }
+        .toc a { color: var(--accent); }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <nav class="nav">
+            <a href="{{ url_for('index') }}">← Головна (симуляція)</a>
+            <a href="{{ url_for('index') }}#preview-canvas">3D на головній</a>
+        </nav>
+
+        <header>
+            <h1>Довідка по 3D Preview — метод DDA</h1>
+            <p class="subtitle">Повний опис елементів сцени, кольорів, фізичного змісту та впливу параметрів. Превʼю рахує розвʼязок на одній довжині хвилі <strong>λ для 3D</strong>; повний спектр — після «Запустити симуляцію».</p>
+        </header>
+
+        <section class="toc">
+            <h2>Зміст</h2>
+            <ol>
+                <li><a href="#coords">Координатна система</a></li>
+                <li><a href="#layers">Шари 3D-сцени</a></li>
+                <li><a href="#modes">Режими перегляду</a></li>
+                <li><a href="#meta">Панель метаданих</a></li>
+                <li><a href="#physics">Ланцюжок розрахунку</a></li>
+                <li><a href="#params-geom">Параметри геометрії</a></li>
+                <li><a href="#params-light">Параметри світла та візуалізації</a></li>
+                <li><a href="#params-sim">Параметри симуляції (вплив на 3D)</a></li>
+                <li><a href="#limits">Обмеження</a></li>
+                <li><a href="#quick">Швидка інтерпретація</a></li>
+            </ol>
+        </section>
+
+        <section id="coords">
+            <h2>1. Координатна система</h2>
+            <p>Усі відстані в <strong>нанометрах (нм)</strong>. Центр (0, 0, 0) — центр наночастинки. Осі в куті сцени <strong>не обертаються</strong> з частинкою.</p>
+            <table>
+                <thead>
+                    <tr><th>Колір осі</th><th>Вісь</th><th>Напрям</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><span class="color-swatch" style="background:#ff5555"></span> Червоний</td><td><strong>X</strong></td><td>Вправо</td></tr>
+                    <tr><td><span class="color-swatch" style="background:#55ff55"></span> Зелений</td><td><strong>Y</strong></td><td>Вгору</td></tr>
+                    <tr><td><span class="color-swatch" style="background:#5555ff"></span> Синій</td><td><strong>Z</strong></td><td>На глядача (вперед)</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="layers">
+            <h2>2. Шари 3D-сцени</h2>
+
+            <h3>2.1. Наночастинка</h3>
+            <table>
+                <thead>
+                    <tr><th>Елемент</th><th>Вигляд</th><th>Фізичний зміст</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Прозоре 3D-тіло + контур</td>
+                        <td>Сфера, еліпсоїд, куб або стрижень</td>
+                        <td>Реальна геометрія металевої частинки в середовищі</td>
+                    </tr>
+                    <tr>
+                        <td>Колір поверхні</td>
+                        <td>Au — золотистий; Ag — сріблястий; Al — сіруватий</td>
+                        <td>Візуальний маркер матеріалу (не спектр поглинання)</td>
+                    </tr>
+                    <tr>
+                        <td>Світіння (emissive)</td>
+                        <td>Сильніша реакція → яскравіше</td>
+                        <td>Пропорційно показнику відгуку |p|/(|α|E₀|)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>2.2. Диполі — дискретизація DDA</h3>
+            <table>
+                <thead>
+                    <tr><th>Елемент</th><th>Колір</th><th>Фізичний зміст</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Жовті кубики або точки</td>
+                        <td><span class="color-swatch" style="background:#ffc107"></span> Жовтий</td>
+                        <td>Вузли кубічної гратки: кожен вузол = один диполь DDA. Крок між вузлами — <code>d</code> (нм)</td>
+                    </tr>
+                    <tr>
+                        <td>Розмір маркера</td>
+                        <td>—</td>
+                        <td>≈ 22% від кроку <code>d</code>, щоб сітка виглядала щільною, не перекривала частинку</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>2.3. Дипольні моменти p⃗</h3>
+            <table>
+                <thead>
+                    <tr><th>Елемент</th><th>Колір</th><th>Фізичний зміст</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Стрілки всередині частинки</td>
+                        <td><span class="color-swatch" style="background:#ff5252"></span> Червоний (відтінок за силою)</td>
+                        <td>Індукований дипольний момент <strong>p</strong> у вузлі; напрямок ≈ Re(<strong>p</strong>)</td>
+                    </tr>
+                    <tr>
+                        <td>Довжина стрілки</td>
+                        <td>—</td>
+                        <td>Пропорційна |<strong>p</strong>|; порівняння між матеріалами можливе</td>
+                    </tr>
+                    <tr>
+                        <td>Анімація коливань</td>
+                        <td>—</td>
+                        <td>Лише демонстрація (синусоїда довжини), не часовий розвʼязок Максвелла</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>2.4. Падаюче світло</h3>
+            <table>
+                <thead>
+                    <tr><th>Елемент</th><th>Колір</th><th>Фізичний зміст</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Стрілка з центру</td>
+                        <td><span class="color-swatch" style="background:#ffeb3b"></span> Жовтий</td>
+                        <td>Напрям поляризації плоскої хвилі <strong>E₀</strong> (X, Y або Z)</td>
+                    </tr>
+                    <tr>
+                        <td>Стрілки вздовж променя</td>
+                        <td><span class="color-swatch" style="background:#69f0ae"></span> Зелений</td>
+                        <td>Вектор поширення <strong>k⃗</strong> (напрям енергії хвилі)</td>
+                    </tr>
+                    <tr>
+                        <td>Синусоїдальна лінія</td>
+                        <td>Зелена</td>
+                        <td>Схематична плоска хвиля; число періодів ∝ 1/λ для 3D</td>
+                    </tr>
+                    <tr>
+                        <td>Жовта сфера + стрілка</td>
+                        <td>Жовтий</td>
+                        <td>Умовне джерело світла з боку <strong>−k⃗</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="formula">E<sub>inc</sub>(<strong>r</strong>) = E₀ · exp(i <strong>k</strong>·<strong>r</strong>), &nbsp; k = 2π/λ</div>
+
+            <h3>2.5. Near-field — |E|²</h3>
+            <p>Увімкнення: чекбокс «Near-field |E|²» або режим «Near-field».</p>
+            <table>
+                <thead>
+                    <tr><th>Колір точки</th><th>Інтенсивність поля</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><span class="color-swatch" style="background:#1565c0"></span> Синій / бірюза</td><td>Слабке локальне поле</td></tr>
+                    <tr><td><span class="color-swatch" style="background:#ffeb3b"></span> Жовтий / помаранчевий</td><td>Середнє поле</td></tr>
+                    <tr><td><span class="color-swatch" style="background:#d32f2f"></span> Червоний</td><td><strong>Hot spot</strong> — підсилене поле біля поверхні</td></tr>
+                </tbody>
+            </table>
+            <p>На оболонках і зрізах навколо частинки рахується |E<sub>inc</sub> + E<sub>scat</sub>|², де E<sub>scat</sub> — суперпозиція від усіх диполів. Контраст кольорів посилений (percentile + гамма).</p>
+
+            <h3>2.6. Середовище</h3>
+            <table>
+                <thead>
+                    <tr><th>Середовище</th><th>Колір оболонки</th><th>n</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Повітря</td><td>Блакитний</td><td>1.00</td></tr>
+                    <tr><td>Вода</td><td>Синій</td><td>1.33</td></tr>
+                    <tr><td>Скло</td><td>Зелений</td><td>1.50</td></tr>
+                    <tr><td>Custom</td><td>Сірий</td><td>заданий вручну</td></tr>
+                </tbody>
+            </table>
+            <p>ε<sub>m</sub> = n² входить у поляризовність α та граничні умови.</p>
+        </section>
+
+        <section id="modes">
+            <h2>3. Режими перегляду</h2>
+            <table>
+                <thead>
+                    <tr><th>Режим</th><th>Що відображається</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>Повний DDA</strong></td><td>Частинка + диполі + p⃗ + хвиля + (опційно) near-field + середовище</td></tr>
+                    <tr><td><strong>Частинка</strong></td><td>Лише геометрія та оболонка середовища</td></tr>
+                    <tr><td><strong>Диполі (voxel)</strong></td><td>Прозора частинка + жовта гратка</td></tr>
+                    <tr><td><strong>Моменти p⃗</strong></td><td>Частинка + червоні стрілки</td></tr>
+                    <tr><td><strong>Near-field</strong></td><td>Частинка + кольорові точки |E|² + хвиля</td></tr>
+                </tbody>
+            </table>
+            <p>Чекбокси «Гратка диполів», «Падаюча хвиля», «Near-field» керують шарами в режимі «Повний DDA».</p>
+        </section>
+
+        <section id="meta">
+            <h2>4. Панель метаданих (під canvas)</h2>
+            <table>
+                <thead>
+                    <tr><th>Поле</th><th>Значення</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Матеріал · форма</td><td>Поточні налаштування геометрії</td></tr>
+                    <tr><td>ε(λ)=a+bi</td><td>Комплексна діелектрична проникність при <strong>λ для 3D</strong></td></tr>
+                    <tr><td>|α|</td><td>Модуль поляризовності одного диполя (μm³, LDR)</td></tr>
+                    <tr><td>відгук |p|/|αE₀|</td><td>Наскільки сильно збуджена частинка відносно |α|E₀</td></tr>
+                    <tr><td>λ₃D</td><td>Довжина хвилі, на якій виконано DDA-розвʼязок для превʼю</td></tr>
+                    <tr><td>NF</td><td>Кількість точок near-field або «вимкнено»</td></tr>
+                    <tr><td>E₀∥</td><td>Напрям поляризації падаючої хвилі</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="physics">
+            <h2>5. Ланцюжок розрахунку (бекенд)</h2>
+            <table>
+                <thead>
+                    <tr><th>Крок</th><th>Формула / модель</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>1. Довжина хвилі</td><td>λ → ω = 2πc/λ</td></tr>
+                    <tr><td>2. Матеріал</td><td>ε(ω): Drude, Drude-Lorentz або експериментальні Re/Im(ε)</td></tr>
+                    <tr><td>3. Поляризовність</td><td>α = α<sub>CM</sub> / (1 − (4π/3) α<sub>CM</sub> G<sub>ii</sub>), G<sub>ii</sub> ≈ ik³/(6π)</td></tr>
+                    <tr><td>4. Падаюче поле</td><td>E<sub>inc,i</sub> = E₀ exp(i <strong>k</strong>·<strong>r</strong><sub>i</sub>)</td></tr>
+                    <tr><td>5. DDA</td><td>Σ<sub>j</sub> A<sub>ij</sub> p<sub>j</sub> = E<sub>inc,i</sub></td></tr>
+                    <tr><td>6. Near-field</td><td>|E|² у зонах навколо частинки</td></tr>
+                </tbody>
+            </table>
+            <div class="formula">β = (ε − ε<sub>m</sub>) / (ε + 2ε<sub>m</sub>), &nbsp; α<sub>CM</sub> = V<sub>cell</sub> · β</div>
+        </section>
+
+        <section id="params-geom">
+            <h2>6. Параметри геометрії — вплив на 3D і фізику</h2>
+            <table>
+                <thead>
+                    <tr><th>Параметр</th><th>Зміна в 3D</th><th>Фізичний ефект</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Матеріал (Au/Ag/Al)</td><td>Колір, ε, |α|, довжини p⃗, NF</td><td>Інші Drude-параметри → інше ε(λ) → інші α, p⃗, hot spots</td></tr>
+                    <tr><td>Форма</td><td>Сфера / еліпсоїд / куб / стрижень</td><td>Інша гратка, анізотропія розсіювання</td></tr>
+                    <tr><td>Радіус R (нм)</td><td>Масштаб тіла</td><td>Розмірний параметр x = 2πn<sub>m</sub>R/λ</td></tr>
+                    <tr><td>Співвідношення сторін</td><td>Витяг еліпсоїда/стрижня</td><td>Різні осі збудження</td></tr>
+                    <tr><td>Крок диполя d</td><td>Щільність жовтих вузлів</td><td>α ∝ d³; d занадто великий → помилка DDA</td></tr>
+                    <tr><td>Кількість диполів N</td><td>Скільки вузлів показано</td><td>Точність; ліміт превʼю ~2500, солвер ~280</td></tr>
+                    <tr><td>Орієнтація θ, φ</td><td>Обертення групи в 3D</td><td>Кут відносно k⃗ та E₀</td></tr>
+                    <tr><td>Модель ε</td><td>Значення ε у метаданих</td><td>Drude / Drude-Lorentz / експеримент</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="params-light">
+            <h2>7. Світло та візуалізація</h2>
+            <table>
+                <thead>
+                    <tr><th>Параметр</th><th>Зміна в 3D</th><th>Фізичний ефект</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>λ для 3D</strong></td><td>Періоди хвилі, ε(λ), p⃗, NF, підпис λ₃D</td><td>Зміна ω, k, ε(ω), повний перерахунок DDA</td></tr>
+                    <tr><td>θ, φ (напрям k⃗)</td><td>Джерело, зелена хвиля, стрілки k⃗</td><td>Фаза exp(i k·r) під іншим кутом</td></tr>
+                    <tr><td>Поляризація E₀</td><td>Жовта стрілка</td><td>Напрям збудження диполів</td></tr>
+                    <tr><td>Чекбокси шарів</td><td>Видимість елементів</td><td>Без зміни розрахунку (крім оновлення при зміні параметрів)</td></tr>
+                </tbody>
+            </table>
+            <div class="note"><strong>λ для 3D</strong> — не середина діапазону λ<sub>min</sub>…λ<sub>max</sub>. Спектр на сторінці результатів — окремий повний розрахунок.</div>
+        </section>
+
+        <section id="params-sim">
+            <h2>8. Параметри симуляції, що впливають на 3D</h2>
+            <table>
+                <thead>
+                    <tr><th>Параметр</th><th>Вплив на 3D</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Середовище, n</td><td>Колір оболонки; ε<sub>m</sub> → α, p⃗</td></tr>
+                    <tr><td>Температура T</td><td>Поправка до γ у Drude → ε(T)</td></tr>
+                    <tr><td>Інтенсивність I, E₀</td><td>Масштаб збудження p⃗</td></tr>
+                    <tr><td>λ<sub>min</sub> (без ручної λ для 3D)</td><td>Може підставитися в «λ для 3D»</td></tr>
+                </tbody>
+            </table>
+            <p><strong>Не впливають на 3D-превʼю:</strong> крок λ спектра, solver, max iterations, тип графіка — лише сторінка результатів.</p>
+        </section>
+
+        <section id="limits">
+            <h2>9. Обмеження моделі превʼю</h2>
+            <table>
+                <thead>
+                    <tr><th>Обмеження</th><th>Пояснення</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Одна λ</td><td>Превʼю — швидкий DDA на λ для 3D, не весь спектр</td></tr>
+                    <tr><td>Near-field</td><td>~360 точок на оболонках, наближення, не повна 3D-карта</td></tr>
+                    <tr><td>Скалярна DDA</td><td>Одна компонента поля; поляризація через E₀</td></tr>
+                    <tr><td>Ліміти N, d</td><td>Фізика: d ≤ λ/10; програма: cap на N у солвері</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="quick">
+            <h2>10. Швидка інтерпретація</h2>
+            <table>
+                <thead>
+                    <tr><th>Що бачите</th><th>Що це означає</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Жовта гратка всередині</td><td>DDA розбиває частинку на диполі</td></tr>
+                    <tr><td>Червоні стрілки</td><td>Індуковані моменти p⃗ — відповідь на світло</td></tr>
+                    <tr><td>Зелена хвиля + k⃗</td><td>Звідки йде плоска хвиля</td></tr>
+                    <tr><td>Сині→червоні точки</td><td>Де поле підсилюється (hot spots)</td></tr>
+                    <tr><td>Рядок ε, |α|, відгук</td><td>Числове підтвердження зміни матеріалу / λ</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <p style="margin-top:24px;"><a href="{{ url_for('index') }}" class="nav" style="font-size:16px;">← Повернутися до симуляції</a></p>
+    </div>
+</body>
+</html>
